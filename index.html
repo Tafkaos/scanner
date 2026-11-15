@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Dokumentenscanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scanner">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#0f1115; --panel:#1a1d24; --line:#2a2f3a; --fg:#eef0f4; --mut:#9aa3b2; --acc:#3b82f6; --ok:#22c55e; --bad:#ef4444;
+          --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overscroll-behavior:none; }
+  button, select, input { font:inherit; color:inherit; }
+  button { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px; min-height:44px; cursor:pointer; }
+  button:active { filter:brightness(1.25); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
+  button.danger { color:#ff8a8a; }
+  button:disabled { opacity:.45; }
+  .view { position:fixed; inset:0; display:none; flex-direction:column; }
+  .view.active { display:flex; }
+  .bar { display:flex; align-items:center; gap:8px; padding:8px 10px; background:rgba(15,17,21,.85); }
+  .top { padding-top:calc(8px + var(--sat)); justify-content:space-between; }
+  .bottom { padding-bottom:calc(10px + var(--sab)); justify-content:space-between; }
+  .grow { flex:1; }
+  /* Kamera */
+  .stage { position:relative; flex:1; background:#000; overflow:hidden; min-height:0; }
+  #video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
+  #overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #hint { position:absolute; left:0; right:0; top:12px; text-align:center; pointer-events:none; }
+  #hint span { background:rgba(0,0,0,.6); padding:6px 12px; border-radius:999px; font-size:14px; }
+  #cam-start { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:24px; background:#000; }
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; }
+  #shutter { width:76px; height:76px; border-radius:50%; border:4px solid #fff; background:#fff; padding:0; box-shadow:0 0 0 4px rgba(255,255,255,.25) inset; }
+  #shutter:active { transform:scale(.94); }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; min-height:40px; border-radius:999px; border:1px solid var(--line); background:var(--panel); }
+  .chip.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  select.chip { appearance:none; padding-right:12px; }
+  .badge { background:var(--acc); color:#fff; border-radius:999px; padding:0 8px; font-size:13px; min-width:22px; text-align:center; }
+  /* Seiten */
+  .scroll { flex:1; overflow:auto; padding:12px; -webkit-overflow-scrolling:touch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  .card { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .card img { display:block; width:100%; aspect-ratio:1/1.3; object-fit:contain; background:#fff; }
+  .card .num { position:absolute; left:6px; top:6px; background:rgba(0,0,0,.7); border-radius:999px; padding:0 8px; font-size:13px; }
+  .card .ord { display:flex; justify-content:space-between; padding:4px; }
+  .card .ord button { min-height:36px; padding:4px 12px; }
+  .card.busy::after { content:"…"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:32px; background:rgba(0,0,0,.45); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text], input[type=search], input:not([type]) { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; min-height:44px; }
+  .mut { color:var(--mut); font-size:14px; }
+  /* Editor */
+  #edit-stage { position:relative; flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; touch-action:none; }
+  #edit-canvas { max-width:100%; max-height:100%; touch-action:none; }
+  /* Dialog */
+  dialog { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:16px; width:min(560px,94vw); max-height:90vh; padding:16px; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog label { display:block; margin:12px 0 4px; font-weight:600; }
+  dialog code { background:var(--panel); padding:2px 6px; border-radius:6px; word-break:break-all; }
+  dialog ol { padding-left:20px; margin:6px 0; } dialog li { margin:4px 0; }
+  #toast { position:fixed; left:50%; bottom:calc(110px + var(--sab)); transform:translateX(-50%); background:rgba(30,34,43,.96); border:1px solid var(--line); padding:10px 16px; border-radius:12px; max-width:90vw; opacity:0; pointer-events:none; transition:opacity .2s; z-index:50; text-align:center; }
+  #toast.show { opacity:1; }
+  #status { font-size:13px; color:var(--mut); padding:0 12px 4px; }
+</style>
+</head>
+<body>
+
+<!-- Kamera -->
+<section id="view-cam" class="view active">
+  <div class="bar top">
+    <button id="btn-settings" aria-label="Einstellungen">⚙︎</button>
+    <select id="mode" class="chip" aria-label="Bildmodus">
+      <option value="doc">Dokument (Farbe)</option>
+      <option value="gray">Graustufen</option>
+      <option value="bw">Schwarzweiß</option>
+      <option value="orig">Original</option>
+    </select>
+    <button id="btn-auto" class="chip" aria-pressed="false">Auto</button>
+    <button id="btn-torch" class="chip" hidden>Licht</button>
+  </div>
+  <div class="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+    <div id="hint"><span id="hint-text">Kamera wird gestartet …</span></div>
+    <div id="flash"></div>
+    <div id="cam-start" hidden>
+      <div id="cam-msg">Für das Scannen wird die Kamera benötigt.</div>
+      <button id="btn-cam-start" class="primary">Kamera starten</button>
+      <button id="btn-native-alt">Stattdessen Kamera-App nutzen</button>
+    </div>
+  </div>
+  <div id="status"></div>
+  <div class="bar bottom">
+    <div class="row" style="flex:1">
+      <button id="btn-import">Galerie</button>
+      <button id="btn-native" title="Foto mit voller Auflösung über die Kamera-App">Kamera-App</button>
+    </div>
+    <button id="shutter" aria-label="Seite aufnehmen"></button>
+    <div class="row" style="flex:1; justify-content:flex-end">
+      <button id="btn-done" class="primary">Fertig <span id="count" class="badge">0</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- Seitenübersicht -->
+<section id="view-pages" class="view">
+  <div class="bar top">
+    <button id="btn-back-cam">‹ Weiter scannen</button>
+    <span id="pages-title" class="grow" style="text-align:center;font-weight:600"></span>
+    <button id="btn-clear" class="danger">Leeren</button>
+  </div>
+  <div class="scroll">
+    <div id="grid" class="grid"></div>
+    <p id="empty" class="mut" hidden>Noch keine Seiten. Zurück zur Kamera und eine Seite aufnehmen.</p>
+    <label class="mut" for="pdf-name" style="display:block;margin:16px 0 4px">Dateiname</label>
+    <input id="pdf-name" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <p id="dbx-line" class="mut"></p>
+  </div>
+  <div class="bar bottom" style="flex-wrap:wrap">
+    <button id="btn-share" class="grow">PDF teilen / speichern</button>
+    <button id="btn-upload" class="primary grow">In Dropbox ablegen</button>
+  </div>
+</section>
+
+<!-- Editor -->
+<section id="view-edit" class="view">
+  <div class="bar top">
+    <button id="ed-cancel">Abbrechen</button>
+    <span id="ed-title" class="grow" style="text-align:center;font-weight:600">Seite bearbeiten</span>
+    <button id="ed-ok" class="primary">Übernehmen</button>
+  </div>
+  <div id="edit-stage"><canvas id="edit-canvas"></canvas></div>
+  <div class="bar" style="flex-wrap:wrap;justify-content:center">
+    <button class="chip" data-mode="doc">Farbe</button>
+    <button class="chip" data-mode="gray">Grau</button>
+    <button class="chip" data-mode="bw">S/W</button>
+    <button class="chip" data-mode="orig">Original</button>
+  </div>
+  <div class="bar bottom" style="flex-wrap:wrap;justify-content:center">
+    <button id="ed-rot-l" aria-label="Links drehen">↺</button>
+    <button id="ed-rot-r" aria-label="Rechts drehen">↻</button>
+    <button id="ed-detect">Neu erkennen</button>
+    <button id="ed-full">Ganzes Bild</button>
+    <button id="ed-preview">Vorschau</button>
+    <button id="ed-delete" class="danger">Löschen</button>
+  </div>
+</section>
+
+<!-- Einstellungen -->
+<dialog id="dlg">
+  <h2 style="margin-top:0">Einstellungen</h2>
+  <label for="s-quality">Qualität / Dateigröße</label>
+  <select id="s-quality" class="chip" style="width:100%">
+    <option value="small">Klein (ca. 150–300 KB pro Seite)</option>
+    <option value="std">Standard (ca. 300–600 KB pro Seite)</option>
+    <option value="high">Hoch (ca. 600 KB–1,2 MB pro Seite)</option>
+  </select>
+  <label><input type="checkbox" id="s-snap" style="width:auto"> Seitenverhältnis auf DIN A4 korrigieren, wenn es ungefähr passt</label>
+
+  <h3>Dropbox</h3>
+  <label for="s-key">Dropbox App-Key</label>
+  <input id="s-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="z. B. abc123def456ghi">
+  <label for="s-folder">Zielordner (leer = Hauptordner der App)</label>
+  <input id="s-folder" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="z. B. Scans/2026">
+  <p class="mut" id="s-state"></p>
+  <div class="row">
+    <button id="s-connect" class="primary">Mit Dropbox verbinden</button>
+    <button id="s-disconnect">Trennen</button>
+  </div>
+  <details style="margin-top:14px">
+    <summary>Einrichtung der Dropbox-Anbindung (einmalig, ca. 5 Minuten)</summary>
+    <ol class="mut">
+      <li>Auf <code>dropbox.com/developers/apps</code> „Create app“ wählen → „Scoped access“ → „App folder“ → beliebigen Namen vergeben.</li>
+      <li>Reiter „Permissions“: <code>files.content.write</code> aktivieren und speichern.</li>
+      <li>Reiter „Settings“ → „Redirect URIs“: genau diese Adresse eintragen und „Add“ klicken:<br><code id="s-redirect"></code></li>
+      <li>„App key“ von dort oben ins Feld kopieren, dann „Mit Dropbox verbinden“ und in Dropbox zustimmen.</li>
+    </ol>
+    <p class="mut">Die PDFs landen danach in <code>Dropbox/Apps/&lt;App-Name&gt;/&lt;Zielordner&gt;</code>. Der App-Key ist kein Geheimnis; ein Passwort wird nie gespeichert.</p>
+  </details>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button id="s-close" class="primary">Fertig</button></div>
+</dialog>
+
+<div id="toast"></div>
+<input id="file-import" type="file" accept="image/*" multiple hidden>
+<input id="file-native" type="file" accept="image/*" capture="environment" hidden>
+
+<script src="scanner-core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
