@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Scanner</string>
+    <string name="scan">📄  Dokument scannen</string>
+    <string name="retry">Upload jetzt erneut versuchen</string>
+    <string name="history">Zuletzt hochgeladen</string>
+    <string name="settings">Einstellungen</string>
+    <string name="folder_label">Dropbox-Ordner für die Scans</string>
+    <string name="auto_start">Scanner beim Öffnen der App sofort starten</string>
+    <string name="dropbox_title">Dropbox-Verbindung</string>
+    <string name="step1">1. App-Key deiner Dropbox-App eintragen und Freigabe öffnen:</string>
+    <string name="appkey_hint">App-Key</string>
+    <string name="open_dropbox">Bei Dropbox freigeben</string>
+    <string name="step2">2. Den angezeigten Zugangscode kopieren und hier einfügen:</string>
+    <string name="code_hint">Zugangscode</string>
+    <string name="confirm_code">Code bestätigen</string>
+    <string name="disconnect">Dropbox trennen</string>
+</resources>
