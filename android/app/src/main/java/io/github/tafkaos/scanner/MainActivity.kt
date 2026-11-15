@@ -146,12 +146,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openDropboxAuth() {
+    /** Dropbox-App-Keys bestehen nur aus Kleinbuchstaben und Ziffern. */
+    private fun checkedKey(): String? {
         val key = editKey.text.toString().trim()
         if (key.isEmpty()) {
             toast("Bitte zuerst den App-Key eintragen.")
-            return
+            return null
         }
+        if (!Regex("^[a-z0-9]{8,32}$").matches(key)) {
+            showError("Der App-Key „$key“ enthält unzulässige Zeichen (erlaubt: a–z, 0–9). " +
+                "Bitte aus der Dropbox-Konsole kopieren statt abtippen.")
+            return null
+        }
+        return key
+    }
+
+    private fun showError(msg: String) {
+        store.setLastError(msg)
+        toast(msg)
+        refresh()
+    }
+
+    private fun openDropboxAuth() {
+        val key = checkedKey() ?: return
         store.appKey = key
         val verifier = Dropbox.newVerifier()
         store.verifier = verifier
@@ -164,9 +181,9 @@ class MainActivity : ComponentActivity() {
 
     private fun confirmCode() {
         val code = editCode.text.toString().trim()
-        val key = editKey.text.toString().trim()
+        val key = checkedKey() ?: return
         val verifier = store.verifier
-        if (code.isEmpty() || key.isEmpty() || verifier.isEmpty()) {
+        if (code.isEmpty() || verifier.isEmpty()) {
             toast("Erst „Bei Dropbox freigeben“ tippen, dann den Code einfügen.")
             return
         }
@@ -180,11 +197,16 @@ class MainActivity : ComponentActivity() {
                     r.optLong("expires_in", 14_400),
                 )
                 store.verifier = ""
+                store.setLastError(null)
                 editCode.setText("")
                 toast("Dropbox verbunden ✔")
                 UploadWorker.enqueue(this@MainActivity) // evtl. wartende Scans jetzt hochladen
             } catch (e: Exception) {
-                toast("Verbindung fehlgeschlagen: ${e.message}")
+                val hint = if (e is DropboxException && e.body.contains("invalid_grant"))
+                    "\nDer Code ist abgelaufen, schon benutzt oder gehört zu einem anderen Versuch. " +
+                        "Bitte erneut „Bei Dropbox freigeben“ tippen und den neuen Code nehmen."
+                else ""
+                showError("Verbindung fehlgeschlagen: ${e.message}$hint")
             }
             refresh()
         }
@@ -207,7 +229,7 @@ class MainActivity : ComponentActivity() {
         }
         val err = store.lastError
         txtError.text = err
-        txtError.visibility = if (err.isNotEmpty() && waiting > 0) View.VISIBLE else View.GONE
+        txtError.visibility = if (err.isNotEmpty() && (waiting > 0 || !connected)) View.VISIBLE else View.GONE
         btnRetry.visibility = if (waiting > 0 && connected) View.VISIBLE else View.GONE
         txtHistory.text = store.history().joinToString("\n").ifEmpty { "–" }
         boxConnect.visibility = if (connected) View.GONE else View.VISIBLE
